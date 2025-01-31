@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                      http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.4.xsd"
+  logicalFilePath="changelog-inmates">
+
+  <changeSet author="tahir" id="changelog-inmates">
+
+    <createTable tableName="tc_inmates">
+      <column name="id" type="INT" autoIncrement="true">
+        <constraints primaryKey="true" />
+      </column>
+      <column name="firstname" type="VARCHAR(128)">
+        <constraints nullable="false" />
+      </column>
+      <column name="lastname" type="VARCHAR(128)"/>
+      <column name="dniidentification" type="VARCHAR(64)">
+        <constraints nullable="false" unique="true" />
+      </column>
+      <column name="dateofbirth" type="DATE">
+        <constraints nullable="false" />
+      </column>
+      <column name="dateofadmission" type="DATE">
+        <constraints nullable="false" />
+      </column>
+      <column name="reasonforadmission" type="VARCHAR(256)">
+        <constraints nullable="false" />
+      </column>
+      <column name="casenumber" type="VARCHAR(64)">
+        <constraints nullable="false" unique="true" />
+      </column>
+      <column name="sentenceduration" type="VARCHAR(64)" />
+      <column name="pavilion" type="VARCHAR(128)" />
+      <column name="cell" type="VARCHAR(128)" />
+      <column name="highrisk" type="BOOLEAN" defaultValueBoolean="false">
+        <constraints nullable="false" />
+      </column>
+      <column name="requiresmedicalattention" type="BOOLEAN" defaultValueBoolean="false">
+        <constraints nullable="false" />
+      </column>
+      <column name="isolation" type="BOOLEAN" defaultValueBoolean="false">
+        <constraints nullable="false" />
+      </column>
+      <column name="observations" type="VARCHAR(4000)" />
+      <column name="attributes" type="VARCHAR(4000)" />
+    </createTable>
+
+      <createTable tableName="tc_user_inmate">
+        <column name="userid" type="INT">
+          <constraints nullable="false" />
+        </column>
+        <column name="inmateid" type="INT">
+          <constraints nullable="false" />
+        </column>
+      </createTable>
+
+      <addForeignKeyConstraint baseTableName="tc_user_inmate" baseColumnNames="inmateid" constraintName="fk_user_inmate_inmateid" onDelete="CASCADE" referencedColumnNames="id" referencedTableName="tc_inmates" />
+      <addForeignKeyConstraint baseTableName="tc_user_inmate" baseColumnNames="userid" constraintName="fk_user_inmate_userid" onDelete="CASCADE" referencedColumnNames="id" referencedTableName="tc_users" />
+
+  </changeSet>
+
+</databaseChangeLog>
