@@ -223,6 +223,10 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
         int readableByte = buf.readableBytes();
 
         if (readableByte < 3) {
+            if (position.getLatitude() == 0 || position.getLongitude() == 0) {
+                getLastLocation(position, null);
+            }
+
             return;
         }
 
@@ -230,6 +234,12 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
         int dataLength = buf.readUnsignedByte();
 
         if (readableByte < dataLength) {
+            if (position.getLatitude() == 0 || position.getLongitude() == 0) {
+                getLastLocation(position, null);
+            }
+
+            LOGGER.info("Unknown Data Type: {} with shorter length {}", dataType, dataLength);
+
             return;
         }
 
@@ -256,6 +266,7 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
                 decodeMotion(position, buf.readSlice(dataLength), buf);
                 break;
             default:
+                LOGGER.info("Unknown Data Type: {} with length {}", dataType, dataLength);
                 buf.skipBytes(dataLength);
                 decodeData(position, buf);
                 break;
