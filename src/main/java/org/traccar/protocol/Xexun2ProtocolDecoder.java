@@ -4,6 +4,8 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.NetworkMessage;
 import org.traccar.Protocol;
@@ -19,34 +21,38 @@ import org.traccar.session.DeviceSession;
 
 import java.net.SocketAddress;
 import java.util.Date;
+import java.util.List;
 
 public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
     public static final int FLAG = 0xfaaf;
-    public static final int MSG_GPS = 0x00;
-    public static final int MSG_WIFI = 0x01;
-    public static final int MSG_LBS = 0x02;
-    public static final int MSG_ALARM = 0x04;
-    public static final int MSG_DEVICE_STATUS = 0x06;
     public static final int MSG_COMMAND = 0x07;
-    public static final int MSG_VERSION = 0x14;
+    public static final int MSG_LOGIN = 0x14;
+
+    private final Logger LOGGER = LoggerFactory.getLogger(Xexun2ProtocolDecoder.class);
 
     public Xexun2ProtocolDecoder(Protocol protocol) {
         super(protocol);
     }
 
-    private void sendResponse(Channel channel, int type, int index, ByteBuf imei) {
+    private void sendResponse(Channel channel, int type, int index, ByteBuf imei, int responseByte, String checksumHex) {
         if (channel != null) {
             ByteBuf response = Unpooled.buffer();
             response.writeShort(FLAG);
             response.writeShort(type);
             response.writeShort(index);
             response.writeBytes(imei);
-            response.writeShort(1); // attributes / length
-            response.writeShort(Checksum.ip(Unpooled.wrappedBuffer(DataConverter.parseHex("2")).nioBuffer())); // checksum
-            response.writeByte(2); // response
+            response.writeShort(0x01); // length
+            response.writeShort(Checksum.ip(Unpooled.wrappedBuffer(DataConverter.parseHex(checksumHex)).nioBuffer()));
+            response.writeByte(responseByte);
             response.writeShort(FLAG);
             channel.writeAndFlush(new NetworkMessage(response, channel.remoteAddress()));
         }
+    }
+
+    private double convertCoordinate(double value) {
+        double degrees = Math.floor(value / 100);
+        double minutes = value - degrees * 100;
+        return degrees + minutes / 60;
     }
 
     private String decodeAlarm(long value) {
@@ -65,18 +71,28 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
         return null;
     }
 
-    private void decodeGps(Position position, ByteBuf buf) {
-        position.setDeviceTime(new Date(buf.readUnsignedInt() * 1000));
-        position.setLatitude(buf.readFloat());
-        position.setLongitude(buf.readFloat());
+    private void decodeGps(Position position, ByteBuf buf, ByteBuf remaining) {
+        position.setTime(new Date(buf.readUnsignedInt() * 1000));
+        position.setLatitude(convertCoordinate(buf.readFloat()));
+        position.setLongitude(convertCoordinate(buf.readFloat()));
         position.setAltitude(buf.readFloat());
         position.set(Position.KEY_SATELLITES, buf.readUnsignedByte());
-        position.set(Position.KEY_RSSI, buf.readUnsignedByte());
-        position.setSpeed(UnitsConverter.knotsFromKph(buf.readUnsignedShort() * 0.1));
-        position.setCourse(buf.readUnsignedShort() * 0.1);
+        int bestSignalAvg = buf.readUnsignedByte();
+        position.setSpeed(UnitsConverter.knotsFromKph((double) buf.readUnsignedShort() / 10.0));
+        position.setCourse((double) buf.readUnsignedShort() / 10.0);
+        int ephemerisSynchronization = buf.readUnsignedByte();
+        int trackingSeconds = buf.readUnsignedByte();
+        position.setAccuracy((double) buf.readUnsignedShort() / 10.0);
+        byte[] satelliteSignals = new byte[4];
+        buf.readBytes(satelliteSignals);
+        String signalValues = bytesToHex(satelliteSignals);
+
+        decodeData(position, remaining);
     }
 
-    private void decodeWifi(Position position, ByteBuf buf) {
+    private void decodeWifi(Position position, ByteBuf buf, ByteBuf remaining) {
+        position.setTime(new Date(buf.readUnsignedInt() * 1000));
+
         Network network = new Network();
         int count = buf.readUnsignedByte();
         for (int i = 0; i < count; i++) {
@@ -85,30 +101,77 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
             network.addWifiAccessPoint(WifiAccessPoint.from(mac, signal));
         }
         position.setNetwork(network);
+        getLastLocation(position, null);
+
+        decodeData(position, remaining);
     }
 
-    private void decodeLbs(Position position, ByteBuf buf) {
+    private void decodeLbs(Position position, ByteBuf buf, ByteBuf remaining) {
+        position.setTime(new Date(buf.readUnsignedInt() * 1000));
         int mcc = buf.readUnsignedShort();
         int mnc = buf.readUnsignedShort();
         int lac = buf.readInt();
-        int cid = buf.readInt();
+        long cid = buf.readUnsignedInt();
         int rssi = buf.readUnsignedByte();
-        Network network = new Network(CellTower.from(mcc, mnc, lac, cid, rssi));
-        position.setNetwork(network);
+        CellTower cellTower = CellTower.from(mcc, mnc, lac, cid, rssi);
+        if (position.getNetwork() == null) {
+            position.setNetwork(new Network(CellTower.from(mcc, mnc, lac, cid, rssi)));
+        } else {
+            position.getNetwork().setCellTowers(List.of(cellTower));
+        }
+        position.setLatitude(convertCoordinate(buf.readFloat()));
+        position.setLongitude(convertCoordinate(buf.readFloat()));
+
+        if (position.getLatitude() != 0 || position.getLongitude() != 0) {
+            position.setOutdated(false);
+        }
+
+        decodeData(position, remaining);
     }
 
-    private void decodeAlarm(Position position, ByteBuf buf) {
-        long timestamp = buf.readUnsignedInt() * 1000L;
+    private void decodeHeartRate(Position position, ByteBuf buf, ByteBuf remaining) {
+        position.setTime(new Date(buf.readUnsignedInt() * 1000));
+        int heartRate = buf.readUnsignedByte();
+        int systolicBp = buf.readUnsignedByte();
+        int diastolicBp = buf.readUnsignedByte();
+        int bloodOxygen = buf.readUnsignedByte();
+
+        position.set(Position.KEY_HEART_RATE, heartRate);
+
+        decodeData(position, remaining);
+    }
+
+    private void decodeDeviceStatus(Position position, ByteBuf buf, ByteBuf remaining) {
+        position.set(Position.KEY_RSSI, buf.readUnsignedByte());
+        position.set(Position.KEY_BATTERY_LEVEL, buf.readUnsignedByte());
+        position.set(Position.KEY_STATUS, buf.readUnsignedByte());
+        position.set(Position.KEY_FUEL_LEVEL, buf.readUnsignedByte());
+
+        decodeData(position, remaining);
+    }
+
+    private void decodeMotion(Position position, ByteBuf buf, ByteBuf remaining) {
+        position.setTime(new Date(buf.readUnsignedInt() * 1000));
+        position.set("steps", buf.readUnsignedShort());
+        position.set("temperature", buf.readFloat());
+
+        decodeData(position, remaining);
+    }
+
+    private void decodeAlarm(Position position, ByteBuf buf, ByteBuf remaining) {
+        position.setTime(new Date(buf.readUnsignedInt() * 1000));
         long alarmType = buf.readUnsignedInt();
-        position.setTime(new Date(timestamp));
         position.set(Position.KEY_ALARM, decodeAlarm(alarmType));
 
+        decodeData(position, remaining);
     }
 
-    private void decodeStatus(Position position, ByteBuf buf) {
-        position.set(Position.KEY_RSSI, buf.readUnsignedByte());
-        position.set(Position.KEY_BATTERY, buf.readUnsignedByte());
-        position.set(Position.KEY_STATUS, buf.readUnsignedByte());
+    private static String bytesToHex(byte[] bytes) {
+        StringBuilder hexString = new StringBuilder();
+        for (byte b : bytes) {
+            hexString.append(String.format("%02X", b));
+        }
+        return hexString.toString();
     }
 
     @Override
@@ -129,41 +192,68 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
             return null;
         }
 
-        int payloadSize = buf.readUnsignedShort() & 0x03ff;
+        int length = buf.readUnsignedShort() & 0x03ff; // extract only the lower 10 bits
         int checksum = buf.readUnsignedShort();
 
-        if (checksum != Checksum.ip(buf.nioBuffer(buf.readerIndex(), payloadSize))) {
+        if (checksum != Checksum.ip(buf.nioBuffer(buf.readerIndex(), length))) {
             return null;
+        }
+
+        if (type == MSG_LOGIN) {
+            sendResponse(channel, type, index, imei, 0x02, "02");
+            return null;
+        } else {
+            sendResponse(channel, type, index, imei, 0x01, "01");
         }
 
         Position position = new Position(getProtocolName());
         position.setDeviceId(deviceSession.getDeviceId());
-        position.setDeviceId(deviceSession.getDeviceId());
 
-        switch (type) {
-            case MSG_GPS:
-                decodeGps(position, buf);
-            case MSG_WIFI:
-                getLastLocation(position, null);
-                decodeWifi(position, buf);
-                break;
-            case MSG_LBS:
-                getLastLocation(position, null);
-                decodeLbs(position, buf);
-                break;
-            case MSG_ALARM:
-                getLastLocation(position, null);
-                decodeAlarm(position, buf);
-                break;
-            case MSG_DEVICE_STATUS:
-                getLastLocation(position, null);
-                decodeStatus(position, buf);
-                break;
-            case MSG_VERSION:
-                sendResponse(channel, type, index, imei);
-                break;
-        }
+        decodeData(position, buf);
 
         return position;
+    }
+
+    private void decodeData(Position position, ByteBuf buf) {
+        int readableByte = buf.readableBytes();
+
+        if (readableByte < 3) {
+            return;
+        }
+
+        int dataType = buf.readUnsignedByte();
+        int dataLength = buf.readUnsignedByte();
+
+        if (readableByte < dataLength) {
+            return;
+        }
+
+        switch (dataType) {
+            case 0x00:
+                decodeGps(position, buf.readSlice(dataLength), buf);
+                break;
+            case 0x01:
+                decodeWifi(position, buf.readSlice(dataLength), buf);
+                break;
+            case 0x02:
+                decodeLbs(position, buf.readSlice(dataLength), buf);
+                break;
+            case 0x04:
+                decodeAlarm(position, buf.readSlice(dataLength), buf);
+                break;
+            case 0x05:
+                decodeHeartRate(position, buf.readSlice(dataLength), buf);
+                break;
+            case 0x06:
+                decodeDeviceStatus(position, buf.readSlice(dataLength), buf);
+                break;
+            case 0x08:
+                decodeMotion(position, buf.readSlice(dataLength), buf);
+                break;
+            default:
+                buf.skipBytes(dataLength);
+                decodeData(position, buf);
+                break;
+        }
     }
 }
