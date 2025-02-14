@@ -116,9 +116,11 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
         CellTower cellTower = CellTower.from(mcc, mnc, lac, cid, rssi);
         if (position.getNetwork() == null) {
             position.setNetwork(new Network(CellTower.from(mcc, mnc, lac, cid, rssi)));
+            getLastLocation(position, null);
         } else {
             position.getNetwork().setCellTowers(List.of(cellTower));
         }
+
         position.setLatitude(convertCoordinate(buf.readFloat()));
         position.setLongitude(convertCoordinate(buf.readFloat()));
 
@@ -137,6 +139,7 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
         int bloodOxygen = buf.readUnsignedByte();
 
         position.set(Position.KEY_HEART_RATE, heartRate);
+        getLastLocation(position, null);
 
         decodeData(position, remaining);
     }
@@ -146,6 +149,7 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
         position.set(Position.KEY_BATTERY_LEVEL, buf.readUnsignedByte());
         position.set(Position.KEY_STATUS, buf.readUnsignedByte());
         position.set(Position.KEY_FUEL_LEVEL, buf.readUnsignedByte());
+        getLastLocation(position, null);
 
         decodeData(position, remaining);
     }
@@ -154,6 +158,7 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
         position.setTime(new Date(buf.readUnsignedInt() * 1000));
         position.set("steps", buf.readUnsignedShort());
         position.set("temperature", buf.readFloat());
+        getLastLocation(position, null);
 
         decodeData(position, remaining);
     }
