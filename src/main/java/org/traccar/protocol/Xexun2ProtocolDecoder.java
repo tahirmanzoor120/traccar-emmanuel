@@ -73,8 +73,7 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
 
     private void decodeGps(Position position, ByteBuf buf, ByteBuf remaining) {
         position.setTime(new Date(buf.readUnsignedInt() * 1000));
-        position.setLatitude(convertCoordinate(buf.readFloat()));
-        position.setLongitude(convertCoordinate(buf.readFloat()));
+        setCoordinates(position, buf);
         position.setAltitude(buf.readFloat());
         position.set(Position.KEY_SATELLITES, buf.readUnsignedByte());
         int bestSignalAvg = buf.readUnsignedByte();
@@ -121,14 +120,24 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
             position.getNetwork().setCellTowers(List.of(cellTower));
         }
 
-        position.setLatitude(convertCoordinate(buf.readFloat()));
-        position.setLongitude(convertCoordinate(buf.readFloat()));
+        if (buf.readableBytes() >= 8) {
+            setCoordinates(position, buf);
+        }
 
         if (position.getLatitude() != 0 || position.getLongitude() != 0) {
             position.setOutdated(false);
         }
 
         decodeData(position, remaining);
+    }
+
+    private void setCoordinates(Position position, ByteBuf buf) {
+        double latitude = convertCoordinate(buf.readFloat());
+        double longitude = convertCoordinate(buf.readFloat());
+        if (latitude != 0 && longitude != 0) {
+            position.setLatitude(latitude);
+            position.setLongitude(longitude);
+        }
     }
 
     private void decodeHeartRate(Position position, ByteBuf buf, ByteBuf remaining) {
