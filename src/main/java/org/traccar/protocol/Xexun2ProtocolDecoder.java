@@ -50,9 +50,12 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
     }
 
     private double convertCoordinate(double value) {
-        double degrees = Math.floor(value / 100);
-        double minutes = value - degrees * 100;
-        return degrees + minutes / 60;
+        double absValue = Math.abs(value);
+        double degrees = Math.floor(absValue / 100);
+        double minutes = absValue - degrees * 100;
+        double result = degrees + minutes / 60;
+
+        return value < 0 ? -result : result;
     }
 
     private String decodeAlarm(long value) {
@@ -100,7 +103,6 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
             network.addWifiAccessPoint(WifiAccessPoint.from(mac, signal));
         }
         position.setNetwork(network);
-        getLastLocation(position, null);
 
         decodeData(position, remaining);
     }
@@ -115,7 +117,6 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
         CellTower cellTower = CellTower.from(mcc, mnc, lac, cid, rssi);
         if (position.getNetwork() == null) {
             position.setNetwork(new Network(CellTower.from(mcc, mnc, lac, cid, rssi)));
-            getLastLocation(position, null);
         } else {
             position.getNetwork().setCellTowers(List.of(cellTower));
         }
@@ -132,8 +133,10 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
     }
 
     private void setCoordinates(Position position, ByteBuf buf) {
-        double latitude = convertCoordinate(buf.readFloat());
-        double longitude = convertCoordinate(buf.readFloat());
+        double rawLatitude = buf.readFloat();
+        double rawLongitude = buf.readFloat();
+        double latitude = convertCoordinate(rawLatitude);
+        double longitude = convertCoordinate(rawLongitude);
         if (latitude != 0 && longitude != 0) {
             position.setLatitude(latitude);
             position.setLongitude(longitude);
@@ -148,7 +151,6 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
         int bloodOxygen = buf.readUnsignedByte();
 
         position.set(Position.KEY_HEART_RATE, heartRate);
-        getLastLocation(position, null);
 
         decodeData(position, remaining);
     }
@@ -158,7 +160,6 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
         position.set(Position.KEY_BATTERY_LEVEL, buf.readUnsignedByte());
         position.set(Position.KEY_STATUS, buf.readUnsignedByte());
         position.set(Position.KEY_FUEL_LEVEL, buf.readUnsignedByte());
-        getLastLocation(position, null);
 
         decodeData(position, remaining);
     }
@@ -167,7 +168,6 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
         position.setTime(new Date(buf.readUnsignedInt() * 1000));
         position.set("steps", buf.readUnsignedShort());
         position.set("temperature", buf.readFloat());
-        getLastLocation(position, null);
 
         decodeData(position, remaining);
     }
@@ -225,6 +225,10 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
 
         decodeData(position, buf);
 
+        if (position.getLatitude() == 0 && position.getLongitude() == 0) {
+            getLastLocation(position, null);
+        }
+
         return position;
     }
 
@@ -232,10 +236,7 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
         int readableByte = buf.readableBytes();
 
         if (readableByte < 3) {
-            if (position.getLatitude() == 0 || position.getLongitude() == 0) {
-                getLastLocation(position, null);
-            }
-
+            LOGGER.info("Unknown Data: {}", ByteBufUtil.hexDump(buf.readBytes(readableByte)));
             return;
         }
 
@@ -243,12 +244,6 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
         int dataLength = buf.readUnsignedByte();
 
         if (readableByte < dataLength) {
-            if (position.getLatitude() == 0 || position.getLongitude() == 0) {
-                getLastLocation(position, null);
-            }
-
-            LOGGER.info("Unknown Data Type: {} with shorter length {}", dataType, dataLength);
-
             return;
         }
 
