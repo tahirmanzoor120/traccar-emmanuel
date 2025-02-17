@@ -132,13 +132,23 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
     }
 
     private void setCoordinates(Position position, ByteBuf buf) {
-        double latitude = convertCoordinate(buf.readFloat());
-        double longitude = convertCoordinate(buf.readFloat());
+        float rawLatitude = buf.readFloat();
+        float rawLongitude = buf.readFloat();
+    
+        LOGGER.info("Raw Latitude: {}, Raw Longitude: {}", rawLatitude, rawLongitude);
+    
+        double latitude = convertCoordinate(rawLatitude);
+        double longitude = convertCoordinate(rawLongitude);
+    
+        LOGGER.info("Converted Latitude: {}, Converted Longitude: {}", latitude, longitude);
+    
         if (latitude != 0 && longitude != 0) {
             position.setLatitude(latitude);
             position.setLongitude(longitude);
+        } else {
+            LOGGER.warn("Invalid coordinates received: ({}, {})", latitude, longitude);
         }
-    }
+    }    
 
     private void decodeHeartRate(Position position, ByteBuf buf, ByteBuf remaining) {
         position.setTime(new Date(buf.readUnsignedInt() * 1000));
