@@ -42,12 +42,12 @@ public class MediaManager {
     private static final Logger LOGGER = LoggerFactory.getLogger(MediaManager.class);
 
     private final String path;
-    private final String inmatesFolder;
+    private final String images;
 
     @Inject
     public MediaManager(Config config) {
         this.path = config.getString(Keys.MEDIA_PATH);
-        this.inmatesFolder = config.getString(Keys.INMATES_PATH);
+        this.images = config.getString(Keys.IMAGES_PATH);
     }
 
     private File createFile(String uniqueId, String name) throws IOException {
@@ -59,8 +59,8 @@ public class MediaManager {
         return filePath.toFile();
     }
 
-    private File createFileInmates(String uniqueId, String name) throws IOException {
-        Path directoryPath = Paths.get(inmatesFolder, uniqueId);
+    private File createFileAllowDuplicates(String uniqueId, String name) throws IOException {
+        Path directoryPath = Paths.get(images, uniqueId);
         Files.createDirectories(directoryPath);
 
         String baseName = name;
@@ -89,8 +89,8 @@ public class MediaManager {
         return new FileOutputStream(createFile(uniqueId, name + "." + extension));
     }
 
-    public OutputStream createFileStreamInmates(String uniqueId, String name, String extension) throws IOException {
-        return new FileOutputStream(createFileInmates(uniqueId, name + "." + extension));
+    public OutputStream createFileStreamAllowDuplicates(String uniqueId, String name, String extension) throws IOException {
+        return new FileOutputStream(createFileAllowDuplicates(uniqueId, name + "." + extension));
     }
 
     public String writeFile(String uniqueId, ByteBuf buf, String extension) {
@@ -114,7 +114,7 @@ public class MediaManager {
     }
 
     public List<String> getImagesList(String dniIdentification) {
-        File personDir = new File(inmatesFolder, dniIdentification);
+        File personDir = new File(images, dniIdentification);
         if (!personDir.exists() || !personDir.isDirectory()) {
             return null;
         }

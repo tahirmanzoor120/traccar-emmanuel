@@ -9,7 +9,7 @@
     <entry key='geocoder.type'>pluscodes</entry>
 
     <entry key='media.path'>./target/media</entry>
-    <entry key='inmates.path'>./target/inmates</entry>
+    <entry key='images.path'>./target/images</entry>
 
     <entry key='logger.console'>true</entry>
     <entry key='logger.queries'>false</entry>

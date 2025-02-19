@@ -13,8 +13,6 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.traccar.api.ExtendedObjectResource;
 import org.traccar.database.MediaManager;
-import org.traccar.mail.MailManager;
-import org.traccar.model.Device;
 import org.traccar.model.Inmate;
 import org.traccar.model.User;
 import org.traccar.storage.StorageException;
@@ -69,7 +67,7 @@ public class InmateResource extends ExtendedObjectResource<Inmate> {
         if (inmate != null) {
             String extension = imageExtension(type);
             try (var input = new FileInputStream(file);
-                 var output = mediaManager.createFileStreamInmates(inmate.getDniIdentification(), path, extension)) {
+                 var output = mediaManager.createFileStreamAllowDuplicates(inmate.getDniIdentification(), path, extension)) {
 
                 long transferred = 0;
                 byte[] buffer = new byte[DEFAULT_BUFFER_SIZE];
