@@ -2,6 +2,7 @@ package org.traccar.api.resource;
 
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.HeaderParam;
 import jakarta.ws.rs.POST;
@@ -99,6 +100,25 @@ public class InmateResource extends ExtendedObjectResource<Inmate> {
             return Response.status(Response.Status.NOT_FOUND).entity("No images found").build();
         }
         return Response.ok(imagesList).build();
+    }
+
+    @Path("{id}/images/{path}")
+    @DELETE
+    public Response deleteImage(@PathParam("id") long inmateId, @PathParam("path") String path) throws StorageException {
+        Inmate inmate = storage.getObject(Inmate.class, new Request(
+                new Columns.All(),
+                new Condition.And(
+                        new Condition.Equals("id", inmateId),
+                        new Condition.Permission(User.class, getUserId(), Inmate.class))));
+        if (inmate != null) {
+            boolean deleted = mediaManager.deleteImage(inmate.getDniIdentification(), path);
+            if (deleted) {
+                return Response.ok("Image deleted successfully").build();
+            } else {
+                return Response.status(Response.Status.NOT_FOUND).entity("Image not found").build();
+            }
+        }
+        return Response.status(Response.Status.NOT_FOUND).build();
     }
 
 }

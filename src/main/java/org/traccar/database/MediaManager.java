@@ -122,4 +122,12 @@ public class MediaManager {
         return List.of(personDir.list((dir, name) -> name.toLowerCase().matches(".*\\.(jpg|png|jpeg|gif)$")));
     }
 
+    public boolean deleteImage(String dniIdentification, String imageName) {
+        File imageFile = new File(images, dniIdentification + "/" + imageName);
+        if (imageFile.exists()) {
+            return imageFile.delete();
+        }
+        return false;
+    }
+
 }
