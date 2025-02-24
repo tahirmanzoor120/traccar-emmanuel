@@ -62,14 +62,11 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
         if (BitUtil.check(value, 0)) {
             return Position.ALARM_SOS;
         }
-        if (BitUtil.check(value, 9)) {
+        if (BitUtil.check(value, 1)) {
             return Position.ALARM_REMOVING;
         }
-        if (BitUtil.check(value, 23)) {
+        if (BitUtil.check(value, 15)) {
             return Position.ALARM_FALL_DOWN;
-        }
-        if (BitUtil.check(value, 25)) {
-            return Position.ALARM_DOOR;
         }
         return null;
     }
@@ -157,7 +154,11 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
 
     private void decodeDeviceStatus(Position position, ByteBuf buf, ByteBuf remaining) {
         position.set(Position.KEY_RSSI, buf.readUnsignedByte());
-        position.set(Position.KEY_BATTERY_LEVEL, buf.readUnsignedByte());
+
+        int battery = buf.readUnsignedShort();
+        position.set(Position.KEY_CHARGE, BitUtil.check(battery, 15));
+        position.set(Position.KEY_BATTERY_LEVEL, BitUtil.to(battery, 15));
+
         position.set(Position.KEY_STATUS, buf.readUnsignedByte());
         position.set(Position.KEY_FUEL_LEVEL, buf.readUnsignedByte());
 
