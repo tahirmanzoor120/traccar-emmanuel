@@ -78,9 +78,12 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
     }
 
     private double convertCoordinate(double value) {
-        double degrees = Math.floor(value / 100);
-        double minutes = value - degrees * 100;
-        return degrees + minutes / 60;
+        double absValue = Math.abs(value);
+        double degrees = Math.floor(absValue / 100);
+        double minutes = absValue - degrees * 100;
+        double result = degrees + minutes / 60;
+
+        return value < 0 ? -result : result;
     }
 
     @Override
