@@ -164,6 +164,15 @@ public class WebServer implements LifecycleObject {
             servletHandler.addServlet(servletHolder, "/api/media/*");
         }
 
+        String inmatesPath = config.getString(Keys.IMAGES_PATH);
+        if (inmatesPath != null) {
+            ServletHolder servletHolder = new ServletHolder(DefaultServlet.class);
+            servletHolder.setInitParameter("resourceBase", new File(inmatesPath).getAbsolutePath());
+            servletHolder.setInitParameter("dirAllowed", "false");
+            servletHolder.setInitParameter("pathInfoOnly", "true");
+            servletHandler.addServlet(servletHolder, "/api/images/*");
+        }
+
         ResourceConfig resourceConfig = new ResourceConfig();
         resourceConfig.property("jersey.config.server.wadl.disableWadl", true);
         resourceConfig.registerClasses(

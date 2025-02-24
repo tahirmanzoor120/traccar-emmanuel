@@ -34,6 +34,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.List;
 
 @Singleton
 public class MediaManager {
@@ -41,10 +42,12 @@ public class MediaManager {
     private static final Logger LOGGER = LoggerFactory.getLogger(MediaManager.class);
 
     private final String path;
+    private final String images;
 
     @Inject
     public MediaManager(Config config) {
         this.path = config.getString(Keys.MEDIA_PATH);
+        this.images = config.getString(Keys.IMAGES_PATH);
     }
 
     private File createFile(String uniqueId, String name) throws IOException {
@@ -56,8 +59,38 @@ public class MediaManager {
         return filePath.toFile();
     }
 
+    private File createFileAllowDuplicates(String uniqueId, String name) throws IOException {
+        Path directoryPath = Paths.get(images, uniqueId);
+        Files.createDirectories(directoryPath);
+
+        String baseName = name;
+        String extension = "";
+
+        int dotIndex = name.lastIndexOf(".");
+        if (dotIndex != -1) {
+            baseName = name.substring(0, dotIndex);
+            extension = name.substring(dotIndex);
+        }
+
+        Path filePath = directoryPath.resolve(name);
+        int count = 1;
+
+        while (Files.exists(filePath)) {
+            String newName = baseName + "_" + count + extension;
+            filePath = directoryPath.resolve(newName);
+            count++;
+        }
+
+        return filePath.toFile();
+    }
+
+
     public OutputStream createFileStream(String uniqueId, String name, String extension) throws IOException {
         return new FileOutputStream(createFile(uniqueId, name + "." + extension));
+    }
+
+    public OutputStream createFileStreamAllowDuplicates(String uniqueId, String name, String extension) throws IOException {
+        return new FileOutputStream(createFileAllowDuplicates(uniqueId, name + "." + extension));
     }
 
     public String writeFile(String uniqueId, ByteBuf buf, String extension) {
@@ -78,6 +111,23 @@ public class MediaManager {
             }
         }
         return null;
+    }
+
+    public List<String> getImagesList(String dniIdentification) {
+        File personDir = new File(images, dniIdentification);
+        if (!personDir.exists() || !personDir.isDirectory()) {
+            return null;
+        }
+
+        return List.of(personDir.list((dir, name) -> name.toLowerCase().matches(".*\\.(jpg|png|jpeg|gif)$")));
+    }
+
+    public boolean deleteImage(String dniIdentification, String imageName) {
+        File imageFile = new File(images, dniIdentification + "/" + imageName);
+        if (imageFile.exists()) {
+            return imageFile.delete();
+        }
+        return false;
     }
 
 }

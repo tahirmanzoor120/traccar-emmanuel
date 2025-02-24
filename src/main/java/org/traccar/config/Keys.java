@@ -1979,4 +1979,13 @@ public final class Keys {
             "broadcast.secondary",
             List.of(KeyType.CONFIG));
 
+    /**
+     * Path to the inmates folder. Server photo files in that folder. Sub-folders will be
+     * automatically created for each inmate by dniIdentification.
+     */
+    public static final ConfigKey<String> IMAGES_PATH = new StringConfigKey(
+            "images.path",
+            List.of(KeyType.CONFIG),
+            "./images");
+
 }
