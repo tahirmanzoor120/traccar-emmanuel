@@ -20,13 +20,27 @@ import org.traccar.model.WifiAccessPoint;
 import org.traccar.session.DeviceSession;
 
 import java.net.SocketAddress;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 
 public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
     public static final int FLAG = 0xfaaf;
     public static final int MSG_COMMAND = 0x07;
+
+    public static final int MSG_GPS_DATA = 0x00;
+    public static final int MSG_WIFI_DATA = 0x01;
+    public static final int MSG_LBS_DATA = 0x02;
+    public static final int MSG_TOF_DATA = 0x03;
+    public static final int MSG_ALARM_DATA = 0x04;
+    public static final int MSG_VITAL_SIGNS = 0x05;
+    public static final int MSG_DEVICE_STATUS = 0x06;
+    public static final int MSG_FINGERPRINT = 0x07;
+    public static final int MSG_OTHER_DATA = 0x08;
+    public static final int MSG_VERSION_DATA = 0x20;
     public static final int MSG_LOGIN = 0x14;
+    public static final int MSG_ACK = 0x22;
 
     private final Logger LOGGER = LoggerFactory.getLogger(Xexun2ProtocolDecoder.class);
 
@@ -62,29 +76,34 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
         if (BitUtil.check(value, 0)) {
             return Position.ALARM_SOS;
         }
-        if (BitUtil.check(value, 1)) {
+        if (BitUtil.check(value, 9)) {
             return Position.ALARM_REMOVING;
         }
-        if (BitUtil.check(value, 15)) {
+        if (BitUtil.check(value, 23)) {
             return Position.ALARM_FALL_DOWN;
+        }
+        if (BitUtil.check(value, 25)) {
+            return Position.ALARM_DOOR;
         }
         return null;
     }
 
     private void decodeGps(Position position, ByteBuf buf, ByteBuf remaining) {
-        position.setTime(new Date(buf.readUnsignedInt() * 1000));
-        setCoordinates(position, buf);
-        position.setAltitude(buf.readFloat());
-        position.set(Position.KEY_SATELLITES, buf.readUnsignedByte());
-        int bestSignalAvg = buf.readUnsignedByte();
-        position.setSpeed(UnitsConverter.knotsFromKph((double) buf.readUnsignedShort() / 10.0));
-        position.setCourse((double) buf.readUnsignedShort() / 10.0);
-        int ephemerisSynchronization = buf.readUnsignedByte();
-        int trackingSeconds = buf.readUnsignedByte();
-        position.setAccuracy((double) buf.readUnsignedShort() / 10.0);
-        byte[] satelliteSignals = new byte[4];
-        buf.readBytes(satelliteSignals);
-        String signalValues = bytesToHex(satelliteSignals);
+        if (buf.readableBytes() >= 32) {
+            position.setTime(new Date(buf.readUnsignedInt() * 1000));
+            setCoordinates(position, buf);
+            position.setAltitude(buf.readFloat());
+            position.set(Position.KEY_SATELLITES, buf.readUnsignedByte());
+            int bestSignalAvg = buf.readUnsignedByte();
+            position.setSpeed(UnitsConverter.knotsFromKph((double) buf.readUnsignedShort() / 10.0));
+            position.setCourse((double) buf.readUnsignedShort() / 10.0);
+            int ephemerisSynchronization = buf.readUnsignedByte();
+            int trackingSeconds = buf.readUnsignedByte();
+            position.setAccuracy((double) buf.readUnsignedShort() / 10.0);
+            byte[] satelliteSignals = new byte[4];
+            buf.readBytes(satelliteSignals);
+            String signalValues = bytesToHex(satelliteSignals);
+        }
 
         decodeData(position, remaining);
     }
@@ -130,10 +149,8 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
     }
 
     private void setCoordinates(Position position, ByteBuf buf) {
-        double rawLatitude = buf.readFloat();
-        double rawLongitude = buf.readFloat();
-        double latitude = convertCoordinate(rawLatitude);
-        double longitude = convertCoordinate(rawLongitude);
+        double latitude = convertCoordinate(buf.readFloat());
+        double longitude = convertCoordinate(buf.readFloat());
         if (latitude != 0 && longitude != 0) {
             position.setLatitude(latitude);
             position.setLongitude(longitude);
@@ -141,27 +158,26 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
     }
 
     private void decodeHeartRate(Position position, ByteBuf buf, ByteBuf remaining) {
-        position.setTime(new Date(buf.readUnsignedInt() * 1000));
-        int heartRate = buf.readUnsignedByte();
-        int systolicBp = buf.readUnsignedByte();
-        int diastolicBp = buf.readUnsignedByte();
-        int bloodOxygen = buf.readUnsignedByte();
+        if (buf.readableBytes() >= 8) {
+            position.setTime(new Date(buf.readUnsignedInt() * 1000));
+            int heartRate = buf.readUnsignedByte();
+            int systolicBp = buf.readUnsignedByte();
+            int diastolicBp = buf.readUnsignedByte();
+            int bloodOxygen = buf.readUnsignedByte();
 
-        position.set(Position.KEY_HEART_RATE, heartRate);
+            position.set(Position.KEY_HEART_RATE, heartRate);
+        }
 
         decodeData(position, remaining);
     }
 
     private void decodeDeviceStatus(Position position, ByteBuf buf, ByteBuf remaining) {
         position.set(Position.KEY_RSSI, buf.readUnsignedByte());
-
-        int battery = buf.readUnsignedShort();
-        position.set(Position.KEY_CHARGE, BitUtil.check(battery, 15));
-        position.set(Position.KEY_BATTERY_LEVEL, BitUtil.to(battery, 15));
-
-        position.set(Position.KEY_STATUS, buf.readUnsignedByte());
-        position.set(Position.KEY_FUEL_LEVEL, buf.readUnsignedByte());
-
+        position.set(Position.KEY_BATTERY_LEVEL, buf.readUnsignedByte());
+        int status = buf.readUnsignedByte();
+        position.set(Position.KEY_STATUS, status);
+        position.set(Position.KEY_MOTION, BitUtil.check(status, 1));
+        position.set(Position.KEY_CHARGE, BitUtil.check(status, 7));
         decodeData(position, remaining);
     }
 
@@ -175,8 +191,10 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
 
     private void decodeAlarm(Position position, ByteBuf buf, ByteBuf remaining) {
         position.setTime(new Date(buf.readUnsignedInt() * 1000));
-        long alarmType = buf.readUnsignedInt();
-        position.set(Position.KEY_ALARM, decodeAlarm(alarmType));
+        long alarmCode = buf.readUnsignedInt();
+        position.set(Position.KEY_EVENT, alarmCode);
+        LOGGER.info("Alarm: {}", alarmCode);
+        position.set(Position.KEY_ALARM, decodeAlarm(alarmCode));
 
         decodeData(position, remaining);
     }
@@ -192,10 +210,17 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
     @Override
     protected Object decode(
             Channel channel, SocketAddress remoteAddress, Object msg) throws Exception {
-
         ByteBuf buf = (ByteBuf) msg;
 
-        buf.skipBytes(2); // flag
+        if (buf.readableBytes() < 16) {
+            return null;
+        }
+
+        int flag = buf.readUnsignedShort();
+
+        if (flag != FLAG) {
+            return  null;
+        }
 
         int type = buf.readUnsignedShort();
         int index = buf.readUnsignedShort();
@@ -237,7 +262,6 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
         int readableByte = buf.readableBytes();
 
         if (readableByte < 3) {
-            LOGGER.info("Unknown Data: {}", ByteBufUtil.hexDump(buf.readBytes(readableByte)));
             return;
         }
 
@@ -248,30 +272,31 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
             return;
         }
 
+        LOGGER.info("Message {} : {}", dataType, ByteBufUtil.hexDump(buf.slice(buf.readerIndex(), dataLength)));
+
         switch (dataType) {
-            case 0x00:
+            case MSG_GPS_DATA:
                 decodeGps(position, buf.readSlice(dataLength), buf);
                 break;
-            case 0x01:
+            case MSG_WIFI_DATA:
                 decodeWifi(position, buf.readSlice(dataLength), buf);
                 break;
-            case 0x02:
+            case MSG_LBS_DATA:
                 decodeLbs(position, buf.readSlice(dataLength), buf);
                 break;
-            case 0x04:
+            case MSG_ALARM_DATA:
                 decodeAlarm(position, buf.readSlice(dataLength), buf);
                 break;
-            case 0x05:
+            case MSG_VITAL_SIGNS:
                 decodeHeartRate(position, buf.readSlice(dataLength), buf);
                 break;
-            case 0x06:
+            case MSG_DEVICE_STATUS:
                 decodeDeviceStatus(position, buf.readSlice(dataLength), buf);
                 break;
-            case 0x08:
+            case MSG_OTHER_DATA:
                 decodeMotion(position, buf.readSlice(dataLength), buf);
                 break;
             default:
-                LOGGER.info("Unknown Data Type: {} with length {}", dataType, dataLength);
                 buf.skipBytes(dataLength);
                 decodeData(position, buf);
                 break;
